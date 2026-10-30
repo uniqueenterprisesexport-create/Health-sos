@@ -1,0 +1,20 @@
+{
+  "name": "health-sos",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "NEEEV Emergency Grid \u2014 patient-first emergency coordination prototype",
+  "scripts": {
+    "start": "node --use-env-proxy server.mjs",
+    "dev": "node --use-env-proxy server.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "check": "node --check server.mjs && node --check public/app.js && node --check public/model.js && node --check public/store.js",
+    "demo": "node examples/journey.mjs",
+    "setup:opencv": "node --use-env-proxy scripts/setup-opencv.mjs",
+    "test:vision": "python3 tests/vision_test.py",
+    "build": "node scripts/build-static.mjs"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

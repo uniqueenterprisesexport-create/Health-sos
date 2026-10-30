@@ -1,0 +1,15 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.data/
+*.sqlite*
+__pycache__/
+.venv/
+*.pyc
+.openai/local/
+
+dist/
+
+# Generated OpenCV runtime; download with npm run setup:opencv
+public/vendor/opencv.js
