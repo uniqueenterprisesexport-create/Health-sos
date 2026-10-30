@@ -8,13 +8,14 @@
     "start": "node --use-env-proxy server.mjs",
     "dev": "node --use-env-proxy server.mjs",
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check server.mjs && node --check public/app.js && node --check public/model.js && node --check public/store.js",
+    "check": "node --check server.mjs && node --check public/app.js && node --check public/model.js && node --check public/store.js && node --check src/vercel-api.mjs",
     "demo": "node examples/journey.mjs",
     "setup:opencv": "node --use-env-proxy scripts/setup-opencv.mjs",
     "test:vision": "python3 tests/vision_test.py",
-    "build": "node scripts/build-static.mjs"
+    "build": "node scripts/build-static.mjs",
+    "build:vercel": "npm run setup:opencv && npm run build"
   },
   "engines": {
-    "node": ">=24"
+    "node": "24.x"
   }
 }

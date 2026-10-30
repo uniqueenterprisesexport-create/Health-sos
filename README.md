@@ -4,6 +4,10 @@ A runnable, patient-first emergency coordination **prototype**: a camera-assiste
 
 **This is not a clinical service. Do not use it for real emergencies or real patient data. Call 112 in India for emergency assistance.** Hospital capacity, staff, ambulances, tariffs, government actions, reports, supplies and payments in this repository are explicitly fictional. Nothing contacts emergency services, files an FIR, orders real medicine, or moves money.
 
+## Deploy to Vercel
+
+Import this repository into Vercel. The included `vercel.json` selects the static frontend plus stateless API functions, downloads the checksum-verified OpenCV.js runtime during the build, and serves `dist/`. The five prototype workspaces share an IndexedDB database within one browser/origin. They do not use Vercel function memory or temporary files as a shared SQLite database. No API key is required for the core demo. See `docs/VERCEL.md` for deployment and optional server-side OpenRouter settings.
+
 ## Run locally
 
 Requirements: **Node.js 24+**, **Python 3.10+**, and internet access for the live hospital directory. Core server and UI have **zero npm dependencies**.
@@ -72,7 +76,7 @@ Camera frames and uploads are processed in memory, never written to SQLite or di
 
 ## Optional OpenRouter scene observations
 
-The local server supports a configurable vision-capable model. Export these values in your environment (the `.env.example` file is documentation, not automatically loaded):
+The local server and optional Vercel scene function support a configurable vision-capable model. Export these values in your environment (the `.env.example` file is documentation, not automatically loaded):
 
 ```bash
 export OPENROUTER_API_KEY='your-key'

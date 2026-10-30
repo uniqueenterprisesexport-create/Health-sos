@@ -1,6 +1,11 @@
 // Shared domain logic: browser sandbox and SQLite server run the same transitions.
 export const roles = ['patient', 'hospital', 'dispatch', 'pharmacy', 'government'];
-export const uid = (prefix) => `${prefix}-${globalThis.crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+export const uid = (prefix) => {
+  // randomUUID requires HTTPS; getRandomValues also supports local HTTP previews.
+  const crypto=globalThis.crypto;
+  const value=typeof crypto?.randomUUID==='function'?crypto.randomUUID().slice(0,8):Array.from(crypto.getRandomValues(new Uint8Array(4)),x=>x.toString(16).padStart(2,'0')).join('');
+  return `${prefix}-${value.toUpperCase()}`;
+};
 const iso = () => new Date().toISOString();
 export function initialState() {
   const now = iso(), day = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);

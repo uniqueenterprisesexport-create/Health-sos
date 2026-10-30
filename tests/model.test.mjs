@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {initialState,transition,freeBeds,sweepInventory,guidance,haversine} from '../public/model.js';
+import {initialState,transition,freeBeds,sweepInventory,guidance,haversine,uid} from '../public/model.js';
 const scenario=()=>{let s=initialState();return {get state(){return s;},run(a,p,r){const out=transition(s,a,p,r);s=out.state;return out.result;}};};
 function patient(f){return f.run('incident.create',{name:'Fictional patient',lat:28.61,lon:77.2,need:'Emergency',consent:true},'patient');}
 function accepted(f){const id=patient(f);f.run('incident.request',{id,hospitalId:'demo-north'},'patient');f.run('hospital.accept',{id},'hospital');return id;}
@@ -23,3 +23,5 @@ test('family updates are prepared, never sent',()=>{const f=scenario(),id=patien
 test('emergency uncertainty always escalates rather than infers CPR',()=>{const g=guidance({safe:'yes',responsive:'yes',breathing:'unsure',bleeding:'no'});assert.equal(g.title,'Tell the dispatcher immediately');assert.ok(g.steps.some(x=>x.includes('cannot confirm')));assert.ok(haversine({lat:0,lon:0},{lat:0,lon:1})>100);});
 
 test('automatic matching requests a suitable facility without claiming acceptance',()=>{const f=scenario();f.run('incident.create',{lat:28.5672,lon:77.21,need:'Emergency',autoRequest:true},'patient');const i=f.state.incidents[0];assert.equal(i.status,'requested');assert.equal(i.hospitalId,null);assert.ok(i.proposedHospitalId);});
+
+test('incident IDs work in HTTP previews without crypto.randomUUID',()=>{const previous=Object.getOwnPropertyDescriptor(globalThis,'crypto');Object.defineProperty(globalThis,'crypto',{configurable:true,value:{getRandomValues(array){array.fill(17);return array;}}});try{assert.equal(uid('SOS'),'SOS-11111111');assert.ok(initialState().audit.length);}finally{Object.defineProperty(globalThis,'crypto',previous);}});

@@ -1,4 +1,4 @@
-const CACHE='health-sos-shell-v1';
+const CACHE='health-sos-shell-v2';
 const SHELL=['/','/index.html','/style.css','/app.js','/model.js','/store.js','/camera.js','/map.js','/icon.svg','/vendor/leaflet.js','/vendor/leaflet.css'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL))));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));

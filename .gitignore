@@ -11,5 +11,6 @@ __pycache__/
 
 dist/
 
-# Generated OpenCV runtime; download with npm run setup:opencv
+.vercel/
+# Generated third-party runtime; npm run setup:opencv downloads it.
 public/vendor/opencv.js

@@ -4,9 +4,9 @@ const channel=typeof window!=='undefined'&&typeof BroadcastChannel!=='undefined'
 const listeners=new Set();
 channel?.addEventListener('message',()=>listeners.forEach(fn=>fn()));
 export function subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn);}
-function openDB(){return new Promise((resolve,reject)=>{const q=indexedDB.open('health-sos-prototype',1);q.onupgradeneeded=()=>q.result.createObjectStore('state');q.onsuccess=()=>resolve(q.result?normalizeState(q.result):q.result);q.onerror=()=>reject(q.error);});}
+function openDB(){return new Promise((resolve,reject)=>{const q=indexedDB.open('health-sos-prototype',1);q.onupgradeneeded=()=>q.result.createObjectStore('state');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error);});}
 function localRead(){return new Promise((resolve,reject)=>{const q=db.transaction('state').objectStore('state').get('current');q.onsuccess=()=>resolve(q.result?normalizeState(q.result):q.result);q.onerror=()=>reject(q.error);});}
-async function localInit(){db=await openDB();const existing=await localRead();if(existing)return existing;return new Promise((resolve,reject)=>{const tx=db.transaction('state','readwrite'),store=tx.objectStore('state'),q=store.get('current');let s;q.onsuccess=()=>{s=q.result||initialState();if(!q.result)store.put(s,'current');};tx.oncomplete=()=>resolve(s);tx.onerror=()=>reject(tx.error);});}
+async function localInit(){db=await openDB();const existing=await localRead();if(existing)return existing;return new Promise((resolve,reject)=>{const tx=db.transaction('state','readwrite'),store=tx.objectStore('state'),q=store.get('current');let s;q.onsuccess=()=>{try{s=q.result||initialState();if(!q.result)store.put(s,'current');}catch(error){tx.abort();reject(error);}};tx.oncomplete=()=>resolve(s);tx.onerror=()=>reject(tx.error);});}
 async function request(path,options={}){const r=await fetch(path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});const data=await r.json();if(!r.ok)throw Error(data.error||'Request failed');return data;}
 export async function init(){
   try{const r=await fetch('/api/health',{signal:AbortSignal.timeout(1800)});server=r.ok&&(await r.json()).mode==='sqlite';}catch{}
@@ -22,7 +22,7 @@ export async function act(action,payload,role){
 }
 export async function reset(){if(server){cache=await request('/api/reset',{method:'POST',headers:{Authorization:`Bearer ${session.token}`},body:'{}'});}else{cache=initialState();await new Promise((resolve,reject)=>{const tx=db.transaction('state','readwrite');tx.objectStore('state').put(cache,'current');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});}channel?.postMessage('update');return cache;}
 export async function cameraAnalyze(image){if(!server)return null;return request('/api/vision',{method:'POST',headers:{Authorization:`Bearer ${session.token}`},body:JSON.stringify({image})});}
-export async function describeScene(image){if(!server)throw Error('Optional AI requires the local server and your server-side OpenRouter settings.');return request('/api/scene',{method:'POST',headers:{Authorization:`Bearer ${session.token}`},body:JSON.stringify({image,consent:true})});}
+export async function describeScene(image){return request('/api/scene',{method:'POST',headers:{...(session?{Authorization:`Bearer ${session.token}`}:{})},body:JSON.stringify({image,consent:true})});}
 export async function nearby(lat,lon,radius=8000){
   if(server){try{return await nominatimNearby(lat,lon,radius);}catch{}try{return await request(`/api/hospitals?lat=${lat}&lon=${lon}&radius=${radius}`);}catch{ /* Try the browser network if the demo server cannot reach the directory. */ }}
   try{return await nominatimNearby(lat,lon,radius);}catch{}
