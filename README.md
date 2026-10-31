@@ -1,16 +1,14 @@
-# Health SOS · NEEEV Emergency Grid
+# Health SOS
 
-A runnable, patient-first emergency coordination **prototype**: a camera-assisted incident workspace, real nearby hospital directory, receiving-hospital acceptance, ambulance assignment, accountable rerouting, inpatient/OPD handling, batch-level pharmacy stock, supplier/disposal queues, agreement tariffs, claims, and simulated weekly settlements.
+Patient-first emergency assistance with real address/hospital search, concise first-aid prompts, automatic **in-app** reservations, and hospital, ambulance, pharmacy, police and administration workspaces.
 
-**This is not a clinical service. Do not use it for real emergencies or real patient data. Call 112 in India for emergency assistance.** Hospital capacity, staff, ambulances, tariffs, government actions, reports, supplies and payments in this repository are explicitly fictional. Nothing contacts emergency services, files an FIR, orders real medicine, or moves money.
+Live app: https://health-sos-kappa.vercel.app/
 
-## Deploy to Vercel
-
-Import this repository into Vercel. The included `vercel.json` selects the static frontend plus stateless API functions, downloads the checksum-verified OpenCV.js runtime during the build, and serves `dist/`. The five prototype workspaces share an IndexedDB database within one browser/origin. They do not use Vercel function memory or temporary files as a shared SQLite database. No API key is required for the core demo. See `docs/VERCEL.md` for deployment and optional server-side OpenRouter settings.
+Hospital names and addresses come from OpenStreetMap. Hospital capacity and all hospital/police operations are demonstration workflows. One preview label in the interface explains this boundary: the app does not actually reserve external beds, dispatch ambulances, register FIRs, order stock or move money.
 
 ## Run locally
 
-Requirements: **Node.js 24+**, **Python 3.10+**, and internet access for the live hospital directory. Core server and UI have **zero npm dependencies**.
+Use Node.js 24.x and Python 3.10+:
 
 ```bash
 git clone https://github.com/uniqueenterprisesexport-create/Health-sos.git
@@ -20,108 +18,55 @@ npm run setup:opencv
 npm start
 ```
 
-Open **http://127.0.0.1:3000**. On Windows, use `py -m pip` if appropriate and set `PYTHON=py` in your shell if `python3` is not available. No API key is needed for the core demo.
+Open http://127.0.0.1:3000. No API key is required for address search, hospital listings or browser OpenCV processing. SQLite is created at `.data/prototype.sqlite` and can be discarded after a demonstration. On Windows, set `PYTHON=python` or `PYTHON=py` in your shell if `python3` is unavailable.
 
-SQLite is automatically created at `.data/prototype.sqlite`. It is disposable but survives process restarts. To get an in-memory database on macOS/Linux:
+## Patient flow
 
-```bash
-HEALTH_SOS_DB=:memory: npm start
-```
+- Enter an address, area or landmark and choose a returned location; or use GPS. Coordinates stay internal.
+- Real nearby hospitals appear with source links, directions and available telephone numbers. Directory listings do not establish current availability or clinical suitability.
+- Save an incident with only the location and incident type. Patient name, phone, observations and access notes are optional.
+- The app automatically records a capacity reservation in the preview workspace. No hospital acceptance step is required. The patient is prompted to call the hospital to confirm external admission.
+- A hospital operator can reroute to an alternative with workspace capacity. The transfer is atomic: if the alternative is unavailable, the original reservation remains.
+- First aid uses a single question or instruction at a time, large answer buttons and optional speech. Danger responses immediately escalate to 112 without requiring completion of all questions. Camera use is optional and does not delay emergency calls.
 
-PowerShell:
+## Police desk
 
-```powershell
-$env:PYTHON="python"
-$env:HEALTH_SOS_DB=":memory:"
-npm start
-```
+Road-accident incidents automatically create a local case intake. Police operators can assign a station/officer, edit facts, prepare an FIR draft, download a draft, close/reopen cases and record a reference **already issued externally**. An issued reference requires explicit operator attestation and is marked operator-reported, not verified or submitted by Health SOS. The app never invents an FIR number or claims registration.
 
-The freely selectable role menu is **demonstration access**, not production authentication. Demo API sessions are server-issued and role-checked, but anyone opening this prototype can choose any role. Bind defaults to loopback. `HOST=0.0.0.0` is for a trusted demonstration network only; do not expose this data model as a patient system.
+## Other workspaces
 
-## Hosted example versus full local prototype
+Hospital capacity, walk-ins, handover, discharge, ambulance assignments, outpatient requests, batch stock, expiry quarantine, replenishment, disposal records, versioned tariffs, claims and settlement ledgers remain usable. Staff roles are selectable preview workspaces, not verified professional identities.
 
-The hosted example serves the same UI and domain rules with **IndexedDB** as a temporary browser database. Multiple tabs on the same browser/origin share it, with transactional writes and update notifications. Different devices do not share that database.
+## Storage and deployment
 
-The local Node server uses **SQLite**, role-scoped demo sessions, revision checks, atomic transitions, shared multi-browser state, an automatic inventory sweep, server-side hospital-directory caching, and Python OpenCV. The hosted static example uses actual **OpenCV.js** locally in the browser instead. If Python is unavailable in the local preview, the camera falls back to the browser engine and displays the engine used. The app labels the active storage mode.
+Local: Node HTTP API + transactional SQLite with role checks and revision conflict detection.
 
-The application shell caches after the first online visit. Directory lookups, external maps and optional AI still need network access. A camera requires HTTPS or localhost; image upload works as an alternative. Device permission and hardware availability are browser-controlled.
+Vercel: static frontend + stateless functions for health, real hospital queries, address geocoding and optional AI scene descriptions. Records use transactional IndexedDB in the browser. Tabs share one browser/origin database; separate devices do not. Camera processing uses real OpenCV.js / WebAssembly. The build downloads the pinned, checksum-verified runtime. See `docs/VERCEL.md`.
 
-## Try a complete journey
+Earlier local records are preserved and normalised to the automatic reservation workflow. Reservations stay explicitly internal to the preview environment.
 
-1. Patient & family → **Start a sample journey**. Confirm permission for the fictional notes and create the incident.
-2. The nearest suitable fictional facility is requested automatically when that checkbox is enabled; **Request hospital** lets you choose another demo facility. Real hospital directory listings are deliberately separate from simulated participating facilities.
-3. Switch to **Hospital team** → accept the request. Capacity is committed only after acceptance.
-4. Switch to **Ambulance dispatch** → assign an available fictional unit.
-5. Hospital team → **Propose reroute**. The original destination and commitment remain until the alternative hospital accepts. Declining the proposal restores the existing journey.
-6. Hospital team → **Receive handover**. A staffed bed becomes occupied and the ambulance becomes available.
-7. Hospital team → create a claim. Administration → **Tariffs & claims** → approve it and run the simulated weekly settlement. No funds move.
-8. Pharmacy → inspect automatic low-stock and expired-batch requests. Administration → **Supply & collection** → approve supply and record a demonstration disposal certificate. Pharmacy → receive the approved supply into a **new batch**.
-9. Patient → prepare a family update or request a non-emergency OPD slot. Hospital staff must confirm the OPD slot.
-10. Inspect **Activity log**, or export/reset the sandbox through Administration.
+## Address-service policy
 
-A dependency-free command-line example exercises the same domain rules:
+The implementation deliberately uses OpenStreetMap's public Nominatim service for a small, manually operated prototype. Read its usage policy: https://operations.osmfoundation.org/policies/nominatim/.
 
-```bash
-npm run demo
-```
+There is no autocomplete or periodic geocoding. Searches occur only on explicit submission, are cached for 30 minutes per process, and are serialised at least 1.1 seconds apart per process. These limits are **not a distributed global limiter**: use a hosted/self-managed geocoder and shared rate limiting before increasing traffic. Aggregate requests across all users must respect the provider's maximum of one request per second. Server deployments can change `GEOCODER_BASE_URL` without editing source. Keep OpenStreetMap attribution visible.
 
-## Actual OpenCV functionality
+## OpenCV and optional AI
 
-Two implementations are included and exercised independently:
+`public/camera.js` and `vision/analyze.py` measure brightness, Laplacian sharpness and edge density. Images are processed in memory and not stored. These are engineering image-quality checks, not injury diagnosis.
 
-- `vision/analyze.py`: decodes the image with `cv2.imdecode`, scales it, converts to grayscale, computes mean brightness and Laplacian variance, and measures Canny edge density.
-- `public/camera.js`: runs equivalent processing with **OpenCV.js / WebAssembly**. Mats are released after use. The official runtime is downloaded by `npm run setup:opencv` with a pinned SHA-256 check; the browser can also load the same official version when the local asset is absent.
+Optional scene description uses a configurable vision-capable OpenRouter model. Configure `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` server-side. On Vercel, also explicitly enable `HEALTH_SOS_AI_ENABLED=true` after setting access and spend controls. The image is sent to that provider only after the user's separate permission. Generated observations are unverified and never determine medical treatment. The feature remains off without configuration.
 
-Camera frames and uploads are processed in memory, never written to SQLite or disk. Image-quality warnings are **engineering heuristics**, not medical validation. Camera images cannot establish normal breathing, internal injuries, consciousness or treatment needs. The reference first-aid flow is selected from explicit user answers, not visual diagnoses, and requires qualified clinical review before deployment.
+First-aid content requires qualified clinical review and validation before clinical deployment. Follow the emergency dispatcher; call 112 for real emergencies.
 
-## Optional OpenRouter scene observations
-
-The local server and optional Vercel scene function support a configurable vision-capable model. Export these values in your environment (the `.env.example` file is documentation, not automatically loaded):
-
-```bash
-export OPENROUTER_API_KEY='your-key'
-export OPENROUTER_MODEL='your-provider/your-vision-model'
-npm start
-```
-
-Use **Emergency help → Optional AI scene description**, select an image, explicitly consent, and request a description. The image is sent to the configured provider only then. The prompt restricts output to unverified visible observations, not diagnosis or generated treatment instructions. Provider availability, cost and data handling depend on your chosen model. Keys remain server-side and are not stored in the browser or repository. Without credentials, the rest of the prototype works and this feature returns an explicit configuration message.
-
-## Real nearby hospitals
-
-Choose **Nearby hospitals → Use my location**, or enter coordinates and press Search. The default coordinates are an explicitly labelled Delhi example, not your detected location.
-
-Live results come from OpenStreetMap Nominatim, with Overpass as a fallback. They are filtered to hospital features and the requested radius, with straight-line distances, source links and retrieval time. Nominatim returns a limited result set: it is not an exhaustive list. A listing does not confirm emergency capability, staffed beds, current opening hours or hospital participation. Failed requests show an error, never substitute fictional hospitals. Manual searches only; the local server caches results for five minutes. Respect upstream usage policies and use an appropriate hosted provider for scale.
-
-## Implemented safeguards and additional workflows
-
-- Unknown-patient labels; no mandatory bystander identity or payment gate.
-- Explicit hospital acknowledgement and capability matching.
-- Single capacity ledger for incoming commitments, walk-ins and handovers.
-- Reroute proposals retain the original accepted destination until alternative acceptance.
-- Arrival fails if physical capacity has become unavailable, requiring clinical escalation.
-- OPD requests require staff confirmation and reject duplicate requested slots.
-- Expired/quarantined stock cannot be dispensed. New supply creates a separate batch.
-- Automatic low-stock requests are deduplicated across the same item/facility. A local server sweep runs every minute and after each successful domain transition; browser mode evaluates at startup and after transitions.
-- Draft incident notifications and simulated acknowledgements are never labelled FIRs.
-- Tariff versions are immutable in claim snapshots; duplicate same-service claims and repeat settlement are rejected.
-- Weekly settlement is a **manual simulation trigger**; production needs funded accounts, claims rules and a real scheduler.
-- Consent-aware, prepared-only family messages. Nothing is automatically sent.
-- Role checks, same-origin mutation protection, input limits, audit events, and optimistic concurrency in the SQLite server.
-- Images excluded from persistent records; external-provider image sharing is opt-in.
-
-## Verification
+## Checks
 
 ```bash
 npm run check
 npm test
 python tests/vision_test.py
 npm run demo
+npm run build:vercel
 ```
 
-See `docs/ARCHITECTURE.md`, `docs/DEMO.md`, and `docs/PRODUCTION.md`. Browser QA covers patient incident creation, hospital acceptance, actual hospital directory results, and OpenCV image processing; synthetic images are used for camera testing, never patient photos.
-
-## Integration boundaries
-
-No authorised interface to 112, eDAR/police, hospitals, government procurement, insurers or payment providers is configured. The prototype implements the local workflows and honest simulation states for those integrations. Government prices are not universally imposed by an app: real billing must use the applicable law, scheme, state rules and participating agreements.
-
-The production design must be evaluated against existing emergency and road-accident-care infrastructure. It should interoperate with those systems through authorised interfaces, not claim to replace them.
+Tests cover automatic reservations and last-bed conflicts, atomic rerouting, police role permissions and reference provenance, stock expiry, immutable tariff snapshots, one-time settlement, API boundaries and actual Python OpenCV image analysis.

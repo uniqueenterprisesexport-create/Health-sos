@@ -1,3 +1,4 @@
+import {places} from './src/vercel-api.mjs';
 import http from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
 import {readFile,mkdir} from 'node:fs/promises';
@@ -43,6 +44,7 @@ export const server=http.createServer(async(req,res)=>{
     const url=new URL(req.url,'http://localhost');
     if(['POST','PUT','DELETE','PATCH'].includes(req.method))sameOrigin(req);
     if(url.pathname==='/api/health'&&req.method==='GET')return json(res,200,{mode:'sqlite',prototype:true,governmentIntegration:false,aiSceneConfigured:!!(process.env.OPENROUTER_API_KEY&&process.env.OPENROUTER_MODEL)});
+    if(url.pathname==='/api/places'&&req.method==='GET')return places(req,res);
     if(url.pathname==='/api/hospitals'&&req.method==='GET')return json(res,200,await hospitals(url));
     if(url.pathname==='/api/session'&&req.method==='POST'){
       const p=await body(req);if(!roles.includes(p.role))throw Error('Unknown role.');const token=randomBytes(32).toString('hex');

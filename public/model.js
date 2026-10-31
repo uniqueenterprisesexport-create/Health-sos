@@ -1,5 +1,5 @@
 // Shared domain logic: browser sandbox and SQLite server run the same transitions.
-export const roles = ['patient', 'hospital', 'dispatch', 'pharmacy', 'government'];
+export const roles = ['patient', 'hospital', 'dispatch', 'pharmacy', 'police', 'government'];
 export const uid = (prefix) => {
   // randomUUID requires HTTPS; getRandomValues also supports local HTTP previews.
   const crypto=globalThis.crypto;
@@ -10,28 +10,30 @@ const iso = () => new Date().toISOString();
 export function initialState() {
   const now = iso(), day = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
   return {
-    revision: 0, createdAt: now,
+    schemaVersion:2, revision: 0, createdAt: now,
     hospitals: [
-      {id:'demo-north',name:'North Campus Demo Hospital',lat:28.6139,lon:77.2090,beds:8,occupied:3,capabilities:['Emergency','Trauma','CT','ICU'],participating:true,updatedAt:now},
-      {id:'demo-east',name:'East District Demo Hospital',lat:28.625,lon:77.235,beds:6,occupied:2,capabilities:['Emergency','Trauma','CT'],participating:true,updatedAt:now},
-      {id:'demo-west',name:'West Community Demo Hospital',lat:28.601,lon:77.18,beds:10,occupied:4,capabilities:['Emergency','ICU'],participating:true,updatedAt:now}
+      {id:'demo-north',sourceId:'osm-node-7130306819',name:'AIIMS Emergency',address:'Aurobindo Marg, New Delhi, Delhi',source:'OpenStreetMap',osm:'https://www.openstreetmap.org/node/7130306819',capacitySource:'preview',connected:false,lat:28.567441,lon:77.2096335,beds:8,occupied:3,capabilities:['Emergency','Trauma','CT','ICU'],participating:true,updatedAt:now},
+      {id:'demo-east',sourceId:'osm-way-454523330',name:'Safdarjung Hospital',address:'Aurobindo Marg, New Delhi, Delhi',source:'OpenStreetMap',osm:'https://www.openstreetmap.org/way/454523330',capacitySource:'preview',connected:false,lat:28.5673381,lon:77.2049728,beds:6,occupied:2,capabilities:['Emergency','Trauma','CT'],participating:true,updatedAt:now},
+      {id:'demo-west',sourceId:'osm-node-9295424879',name:'Indraprastha Apollo Hospital',address:'Mathura Road, New Delhi, Delhi',source:'OpenStreetMap',osm:'https://www.openstreetmap.org/node/9295424879',capacitySource:'preview',connected:false,lat:28.5408159,lon:77.2835195,beds:10,occupied:4,capabilities:['Emergency','ICU'],participating:true,updatedAt:now}
     ],
     incidents: [],
-    ambulances: [{id:'AMB-01',label:'Unit 01 · simulated ALS',status:'available',incidentId:null},{id:'AMB-02',label:'Unit 02 · simulated BLS',status:'available',incidentId:null}],
+    ambulances: [{id:'AMB-01',label:'Unit 01 · Advanced life support',status:'available',incidentId:null},{id:'AMB-02',label:'Unit 02 · Basic life support',status:'available',incidentId:null}],
     medicines: [
-      {id:'MED-01',name:'Sterile saline · demo stock',batch:'SAL-2608',quantity:42,min:20,expiry:day(120),status:'active',hospitalId:'demo-north'},
-      {id:'MED-02',name:'Sterile dressings · demo stock',batch:'DRS-2610',quantity:6,min:25,expiry:day(45),status:'active',hospitalId:'demo-north'},
-      {id:'MED-03',name:'Paracetamol · demo stock',batch:'PCM-2501',quantity:18,min:20,expiry:day(-2),status:'quarantined',hospitalId:'demo-north'}
+      {id:'MED-01',name:'Sterile saline',batch:'SAL-2608',quantity:42,min:20,expiry:day(120),status:'active',hospitalId:'demo-north'},
+      {id:'MED-02',name:'Sterile dressings',batch:'DRS-2610',quantity:6,min:25,expiry:day(45),status:'active',hospitalId:'demo-north'},
+      {id:'MED-03',name:'Paracetamol',batch:'PCM-2501',quantity:18,min:20,expiry:day(-2),status:'quarantined',hospitalId:'demo-north'}
     ],
     orders: [], collections: [],
-    tariffs:[{id:'TAR-01',code:'DEMO-ER',name:'Emergency assessment',amount:500,state:'Delhi',scheme:'Prototype agreement',version:1,effective:day(-1)},{id:'TAR-02',code:'DEMO-BED',name:'Ward day',amount:1200,state:'Delhi',scheme:'Prototype agreement',version:1,effective:day(-1)}],
-    appointments: [], notifications: [], claims: [], settlements: [], reports: [], audit: [{id:uid('EVT'),at:now,role:'system',action:'Prototype initialised',detail:'All seeded institutions, capacity, prices and inventory are fictional.'}]
+    tariffs:[{id:'TAR-01',code:'ER-ASSESS',name:'Emergency assessment',amount:500,state:'Delhi',scheme:'Workspace tariff',version:1,effective:day(-1)},{id:'TAR-02',code:'WARD-DAY',name:'Ward day',amount:1200,state:'Delhi',scheme:'Workspace tariff',version:1,effective:day(-1)}],
+    appointments: [], notifications: [], claims: [], settlements: [], reports: [], audit: [{id:uid('EVT'),at:now,role:'system',action:'Workspace ready',detail:'Hospital names are directory records. Capacity, dispatch, police and payment workflows run in the preview environment.'}]
   };
 }
 export function freeBeds(state, h, excludingId) {
-  const holds=state.incidents.filter(i=>i.id!==excludingId&&i.hospitalId===h.id&&['accepted','en_route','reroute_pending'].includes(i.status)).length;
+  const holds=state.incidents.filter(i=>i.id!==excludingId&&i.hospitalId===h.id&&['reserved','accepted','en_route','reroute_pending'].includes(i.status)).length;
+  if(!Number.isInteger(h.beds)||!Number.isInteger(h.occupied))return 0;
   return Math.max(0,h.beds-h.occupied-holds);
 }
+export function isHospitalListing(name){const value=String(name||'').replace(/\./g,'');return /hospital|medical|clinic|health|trauma|emergency|nursing|aiims|medicity|hospice|अस्पताल|चिकित्सा|स्वास्थ्य/i.test(value)&&!/\b(bus stop|back gate|entrance|gate [0-9])\b/i.test(value);}
 export function haversine(a,b) {
   const rad=x=>x*Math.PI/180, dlat=rad(b.lat-a.lat),dlon=rad(b.lon-a.lon);
   const v=Math.sin(dlat/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dlon/2)**2;
@@ -41,43 +43,66 @@ const required=(v,name)=>{if(typeof v!=='string'||!v.trim()||v.length>1500)throw
 const integer=(v,min,max,name)=>{const n=Number(v);if(!Number.isInteger(n)||n<min||n>max)throw Error(`${name} must be a whole number from ${min} to ${max}.`);return n;};
 function coord(v,min,max,name){if(v===''||v===null||v===undefined||!Number.isFinite(Number(v))||Number(v)<min||Number(v)>max)throw Error(`Valid ${name} required.`);return Number(v);}
 const find=(items,id,name)=>{const x=items.find(i=>i.id===id);if(!x)throw Error(`${name} not found.`);return x;};
-const allow=(role,list)=>{if(!list.includes(role))throw Error('This action is unavailable for this demo role.');};
+const allow=(role,list)=>{if(!list.includes(role))throw Error('This action is unavailable in this workspace.');};
 export function candidates(state,incident) {
-  return state.hospitals.filter(h=>h.participating&&h.id!==incident.hospitalId&&h.capabilities.includes(incident.need)&&freeBeds(state,h)>0).map(h=>({...h,distance:haversine(incident,h)})).sort((a,b)=>a.distance-b.distance);
+  return state.hospitals.filter(h=>h.participating&&isHospitalListing(h.name)&&h.id!==incident.hospitalId&&h.capabilities.includes(incident.need)&&freeBeds(state,h)>0).map(h=>({...h,distance:haversine(incident,h)})).sort((a,b)=>a.distance-b.distance);
 }
-export function normalizeState(state){return {...state,appointments:state.appointments||[],notifications:state.notifications||[]};}
+export function normalizeState(state){
+  const s={...state,appointments:state.appointments||[],notifications:state.notifications||[]};
+  if(!s.schemaVersion||s.schemaVersion<2){
+    const seeded=initialState().hospitals;
+    s.hospitals=s.hospitals.map(h=>{const known=seeded.find(n=>n.id===h.id);return known?{...h,...known,beds:h.beds,occupied:h.occupied}:h;});
+    s.incidents=s.incidents.map(i=>{if(i.status==='requested'&&i.proposedHospitalId){return {...i,hospitalId:i.proposedHospitalId,proposedHospitalId:null,status:'reserved',reservationScope:'preview',externalConfirmation:false};}return {...i,reservationScope:i.reservationScope||'preview',externalConfirmation:false};});
+    s.schemaVersion=2;
+  }
+  return s;
+}
+function reserve(s,i,preferred){
+  const eligible=s.hospitals.filter(h=>h.participating&&isHospitalListing(h.name)&&h.capabilities.includes(i.need)&&freeBeds(s,h,i.id)>0).sort((a,b)=>haversine(i,a)-haversine(i,b));
+  const h=preferred?eligible.find(h=>h.id===preferred):eligible[0];
+  if(!h)return false;
+  i.hospitalId=h.id;i.proposedHospitalId=null;i.status=i.ambulanceId?'en_route':'reserved';i.reservationScope='preview';i.externalConfirmation=false;
+  i.events.push({at:iso(),text:`Capacity automatically reserved in this workspace at ${h.name}. External admission is not confirmed.`});return true;
+}
 export function transition(current, action, p={}, role='patient') {
-  if(!roles.includes(role))throw Error('Unknown demo role.');
+  if(!roles.includes(role))throw Error('Unknown workspace.');
   const s=normalizeState(structuredClone(current));let detail='',result=null;
   switch(action) {
     case 'incident.create': {
-      allow(role,['patient','hospital','dispatch']);
-      const i={id:uid('SOS'),name:required(p.name||'Unidentified patient','Patient label'),lat:coord(p.lat,-90,90,'latitude'),lon:coord(p.lon,-180,180,'longitude'),notes:String(p.notes||'').slice(0,1500),need:p.need||'Emergency',status:'reported',hospitalId:null,proposedHospitalId:null,ambulanceId:null,createdAt:iso(),events:[],observations:p.observations||null,consent:!!p.consent};
+      allow(role,['patient','hospital','dispatch','police']);
+      const i={id:uid('SOS'),name:required(p.name||'Unidentified patient','Patient label'),lat:coord(p.lat,-90,90,'latitude'),lon:coord(p.lon,-180,180,'longitude'),address:String(p.address||'Location shared').slice(0,500),landmark:String(p.landmark||'').slice(0,300),incidentType:p.incidentType||'road_accident',contact:String(p.contact||'').slice(0,30),notes:String(p.notes||'').slice(0,1500),need:p.need||'Emergency',status:'reported',hospitalId:null,proposedHospitalId:null,ambulanceId:null,createdAt:iso(),events:[],observations:p.observations||null,consent:!!p.consent};
       if(!['Emergency','Trauma','CT','ICU'].includes(i.need))throw Error('Unsupported capability.');
-      i.events.push({at:iso(),text:'Reported in prototype. Emergency services have not been contacted.'});
-      if(p.autoRequest){const selected=s.hospitals.filter(h=>h.participating&&h.capabilities.includes(i.need)&&freeBeds(s,h)>0).sort((a,b)=>haversine(i,a)-haversine(i,b))[0];if(selected){i.proposedHospitalId=selected.id;i.status='requested';i.events.push({at:iso(),text:`Automatically requested nearest matching demo facility: ${selected.name}. Staff acceptance required.`});}}
+      i.events.push({at:iso(),text:'Incident saved. Call 112 to contact emergency services.'});
+      const selected=p.preferredHospitalId?s.hospitals.find(h=>h.id===p.preferredHospitalId):null;
+      const inRange=s.hospitals.filter(h=>isHospitalListing(h.name)&&haversine(i,h)<=30);
+      if(p.autoRequest!==false&&(selected||inRange.length)){
+        const target=selected||inRange.filter(h=>h.participating&&freeBeds(s,h)>0).sort((a,b)=>haversine(i,a)-haversine(i,b))[0]||inRange.sort((a,b)=>haversine(i,a)-haversine(i,b))[0];
+        if(target&&!reserve(s,i,target.id)){i.hospitalId=target.id;i.status='destination_selected';i.reservationScope='unconfirmed';i.externalConfirmation=false;i.events.push({at:iso(),text:`Destination selected: ${target.name}. Call the hospital to confirm availability.`});}
+      }
+      if(i.incidentType==='road_accident')s.reports.unshift({id:uid('CASE'),incidentId:i.id,status:'intake',summary:i.notes||'Road accident notification',station:'',officer:'',firDraft:'',officialReference:null,createdAt:iso(),events:[{at:iso(),text:'Case intake saved locally. No police notification sent.'}],externalSubmission:false});
       s.incidents.unshift(i);result=i.id;detail=i.id;break;
     }
+    case 'incident.reserve':
     case 'incident.request': {
-      allow(role,['patient','dispatch','hospital']);const i=find(s.incidents,p.id,'Incident'),h=find(s.hospitals,p.hospitalId,'Hospital');
-      if(!['reported','requested'].includes(i.status))throw Error('This incident already has an active hospital journey.');
-      if(!h.participating||!h.capabilities.includes(i.need))throw Error('Hospital lacks the requested prototype capability.');
-      if(freeBeds(s,h,i.id)<1)throw Error('No uncommitted demo capacity.');
-      i.proposedHospitalId=h.id;i.status='requested';i.events.push({at:iso(),text:`Request sent to ${h.name}; awaiting staff acceptance.`});detail=i.id;break;
+      allow(role,['patient','dispatch','hospital']);const i=find(s.incidents,p.id,'Incident');
+      if(!['reported','destination_selected','reserved'].includes(i.status)||i.ambulanceId)throw Error('This journey is already in progress. The hospital can reroute if needed.');
+      if(!reserve(s,i,p.hospitalId))throw Error('No available workspace capacity. Select a real hospital and call to confirm availability.');detail=i.id;break;
     }
-    case 'hospital.accept': {
-      allow(role,['hospital']);const i=find(s.incidents,p.id,'Incident');
-      if(!['requested','reroute_pending'].includes(i.status))throw Error('No pending hospital request.');
-      const h=find(s.hospitals,i.proposedHospitalId,'Proposed hospital');
-      if(!h.capabilities.includes(i.need)||freeBeds(s,h,i.id)<1)throw Error('Required capacity is no longer available.');
-      i.hospitalId=h.id;i.proposedHospitalId=null;i.status=i.ambulanceId?'en_route':'accepted';
-      i.events.push({at:iso(),text:`Staff accepted at ${h.name}. Provisional capacity committed.`});detail=i.id;break;
+    case 'directory.sync': {
+      if(!Array.isArray(p.hospitals)||p.hospitals.length>60)throw Error('Invalid hospital directory response.');
+      for(const row of p.hospitals){
+        if(typeof row.id!=='string'||!/^osm-(node|way|relation)-\d+$/.test(row.id))continue;
+        const lat=coord(row.lat,-90,90,'latitude'),lon=coord(row.lon,-180,180,'longitude'),name=required(row.name,'Hospital name');if(!isHospitalListing(name))continue;
+        const existing=s.hospitals.find(h=>h.id===row.id||h.sourceId===row.id);
+        const entry={name,lat,lon,address:String(row.address||'').slice(0,700),phone:String(row.phone||'').slice(0,100),osm:`https://www.openstreetmap.org/${row.id.split('-')[1]}/${row.id.split('-')[2]}`,source:'OpenStreetMap',sourceId:row.id,directoryUpdatedAt:iso()};
+        if(existing)Object.assign(existing,entry);else s.hospitals.push({id:row.id,...entry,beds:8,occupied:0,capabilities:['Emergency'],participating:true,capacitySource:'preview',connected:false,updatedAt:iso()});
+      }detail='Real hospital directory updated';break;
     }
     case 'hospital.capacity': {
       allow(role,['hospital']);const h=find(s.hospitals,p.hospitalId,'Hospital');
       const beds=integer(p.beds,0,1000,'Staffed beds'),occupied=integer(p.occupied,0,1000,'Occupied beds');
       if(occupied>beds)throw Error('Occupied beds cannot exceed staffed beds.');
-      h.beds=beds;h.occupied=occupied;h.updatedAt=iso();detail=`${h.name}: ${occupied}/${beds}`;break;
+      h.beds=beds;h.occupied=occupied;h.updatedAt=iso();h.participating=true;h.capacitySource='preview';if(!h.capabilities.includes('Emergency'))h.capabilities.push('Emergency');detail=`${h.name}: ${occupied}/${beds}`;break;
     }
     case 'hospital.walkin': {
       allow(role,['hospital']);const h=find(s.hospitals,p.hospitalId,'Hospital');
@@ -85,35 +110,36 @@ export function transition(current, action, p={}, role='patient') {
       h.occupied++;h.updatedAt=iso();detail=`Walk-in at ${h.name}; review any affected commitments.`;break;
     }
     case 'incident.reroute': {
-      allow(role,['hospital','dispatch']);const i=find(s.incidents,p.id,'Incident');
-      if(!['accepted','en_route'].includes(i.status))throw Error('Only an accepted incoming patient can be rerouted.');
-      const options=candidates(s,i);const h=p.hospitalId?options.find(h=>h.id===p.hospitalId):options[0];
-      if(!h)throw Error('No suitable alternative. Escalate to dispatcher; current destination retained.');
-      i.proposedHospitalId=h.id;i.status='reroute_pending';i.events.push({at:iso(),text:`Alternative proposed: ${h.name}. Current destination retained until acceptance.`});detail=i.id;break;
+      allow(role,['hospital']);const i=find(s.incidents,p.id,'Incident');
+      if(!['reserved','accepted','en_route','destination_selected'].includes(i.status))throw Error('Only an incoming patient can be rerouted.');
+      const options=candidates(s,i),h=p.hospitalId?options.find(h=>h.id===p.hospitalId):options[0];
+      if(!h)throw Error('No suitable alternative with workspace capacity. Current destination retained.');
+      const previous=i.hospitalId;if(!reserve(s,i,h.id))throw Error('Capacity changed. Current destination retained.');
+      i.events.push({at:iso(),text:`Hospital rerouted from ${s.hospitals.find(h=>h.id===previous)?.name||'previous destination'} to ${h.name}. New workspace reservation recorded.`});detail=i.id;break;
     }
     case 'dispatch.assign': {
       allow(role,['dispatch']);const i=find(s.incidents,p.id,'Incident'),a=find(s.ambulances,p.ambulanceId,'Ambulance');
-      if(!['reported','requested','accepted'].includes(i.status))throw Error('Incident cannot be assigned in its current state.');
+      if(!['reported','reserved','accepted','destination_selected'].includes(i.status))throw Error('Incident cannot be assigned in its current state.');
       if(a.status!=='available'||i.ambulanceId)throw Error('Ambulance or incident is already assigned.');
-      a.status='assigned';a.incidentId=i.id;i.ambulanceId=a.id;if(i.status==='accepted')i.status='en_route';
-      i.events.push({at:iso(),text:`${a.id} assigned in simulation. No real ambulance dispatched.`});detail=i.id;break;
+      a.status='assigned';a.incidentId=i.id;i.ambulanceId=a.id;if(['accepted','reserved'].includes(i.status))i.status='en_route';
+      i.events.push({at:iso(),text:`${a.id} assigned in this workspace. External dispatch is not connected.`});detail=i.id;break;
     }
     case 'incident.arrive': {
       allow(role,['hospital']);const i=find(s.incidents,p.id,'Incident');
-      if(!['accepted','en_route'].includes(i.status))throw Error('Hospital must accept before arrival is recorded.');
+      if(!['reserved','accepted','en_route'].includes(i.status))throw Error('A workspace reservation is required before recording handover.');
       const h=find(s.hospitals,i.hospitalId,'Hospital');if(h.occupied>=h.beds)throw Error('Capacity changed. Clinical escalation required.');
       h.occupied++;h.updatedAt=iso();i.status='arrived';i.receivedBy=required(p.receivedBy,'Receiving staff');i.events.push({at:iso(),text:`Handover received by ${i.receivedBy}.`});
       if(i.ambulanceId){const a=find(s.ambulances,i.ambulanceId,'Ambulance');a.status='available';a.incidentId=null;}detail=i.id;break;
     }
     case 'incident.discharge': {
       allow(role,['hospital']);const i=find(s.incidents,p.id,'Incident');if(i.status!=='arrived')throw Error('Only an admitted patient can be discharged.');
-      const h=find(s.hospitals,i.hospitalId,'Hospital');h.occupied=Math.max(0,h.occupied-1);h.updatedAt=iso();i.status='discharged';i.events.push({at:iso(),text:'Discharge recorded in prototype.'});detail=i.id;break;
+      const h=find(s.hospitals,i.hospitalId,'Hospital');h.occupied=Math.max(0,h.occupied-1);h.updatedAt=iso();i.status='discharged';i.events.push({at:iso(),text:'Discharge recorded.'});detail=i.id;break;
     }
     case 'appointment.create': {
       allow(role,['patient','hospital']);const h=find(s.hospitals,p.hospitalId,'Hospital');
       const when=required(p.when,'Appointment time');if(!Number.isFinite(Date.parse(when))||Date.parse(when)<Date.now())throw Error('Choose a future appointment time.');
-      if(s.appointments.some(a=>a.hospitalId===h.id&&a.when===when&&a.status!=='cancelled'))throw Error('That demo slot is already requested. Choose another time.');
-      const a={id:uid('OPD'),name:required(p.name||'Demo patient','Patient label'),hospitalId:h.id,when,department:required(p.department,'Department'),status:'requested'};
+      if(s.appointments.some(a=>a.hospitalId===h.id&&a.when===when&&a.status!=='cancelled'))throw Error('That slot is already requested. Choose another time.');
+      const a={id:uid('OPD'),name:required(p.name||'Patient','Patient label'),hospitalId:h.id,when,department:required(p.department,'Department'),status:'requested'};
       s.appointments.unshift(a);result=a.id;detail=a.id;break;
     }
     case 'appointment.confirm': {
@@ -121,25 +147,36 @@ export function transition(current, action, p={}, role='patient') {
     }
     case 'family.share': {
       allow(role,['patient']);const i=find(s.incidents,p.id,'Incident');if(!p.consent)throw Error('Permission is required to prepare a family update.');
-      const h=s.hospitals.find(h=>h.id===i.hospitalId);const n={id:uid('NOTE'),incidentId:i.id,createdAt:iso(),text:`Prototype update for ${i.id}: ${i.status.replaceAll('_',' ')}. ${h?'Receiving demo facility: '+h.name+'.':'Hospital acceptance pending.'} No real emergency service has been contacted.`,status:'prepared_not_sent'};
+      const h=s.hospitals.find(h=>h.id===i.hospitalId);const n={id:uid('NOTE'),incidentId:i.id,createdAt:iso(),text:`Health SOS update for ${i.id}: ${i.status.replaceAll('_',' ')}. ${h?'Hospital: '+h.name+'.':'Hospital selection pending.'} This is a workspace record; external services have not been contacted.`,status:'prepared_not_sent'};
       s.notifications.unshift(n);detail=n.id;result=n.text;break;
     }
-    case 'hospital.decline': {
-      allow(role,['hospital']);const i=find(s.incidents,p.id,'Incident');if(!['requested','reroute_pending'].includes(i.status))throw Error('No pending hospital request.');
-      i.proposedHospitalId=null;i.status=i.hospitalId?(i.ambulanceId?'en_route':'accepted'):'reported';i.events.push({at:iso(),text:'Proposed receiving team declined. Existing accepted destination retained where present; dispatcher escalation required.'});detail=i.id;break;
-    }
     case 'report.create': {
-      allow(role,['patient','hospital','dispatch']);const i=find(s.incidents,p.id,'Incident');
-      if(s.reports.some(r=>r.incidentId===i.id))throw Error('An incident notification already exists.');
-      s.reports.unshift({id:uid('REP'),incidentId:i.id,status:'draft',summary:required(p.summary||i.notes||'Accident notification; details unverified.','Summary'),createdAt:iso(),officialReference:null});detail=i.id;break;
+      allow(role,['patient','hospital','dispatch','police']);const i=find(s.incidents,p.id,'Incident');
+      if(s.reports.some(r=>r.incidentId===i.id))throw Error('A police case already exists for this incident.');
+      s.reports.unshift({id:uid('CASE'),incidentId:i.id,status:'intake',summary:required(p.summary||i.notes||'Incident requires review.','Summary'),station:'',officer:'',firDraft:'',officialReference:null,createdAt:iso(),events:[],externalSubmission:false});detail=i.id;break;
     }
-    case 'report.submit': {
-      allow(role,['government']);const r=find(s.reports,p.id,'Report');if(r.status!=='draft')throw Error('Report already submitted to simulator.');r.status='simulated_acknowledgement';r.officialReference=uid('DEMO-ACK');detail=`${r.id}; simulation only, not an FIR`;break;
+    case 'police.update': {
+      allow(role,['police']);const r=find(s.reports,p.id,'Police case');
+      if(r.status==='closed')throw Error('Reopen the case before editing.');
+      r.station=String(p.station||'').slice(0,200);r.officer=String(p.officer||'').slice(0,200);r.summary=required(p.summary,'Case summary');r.firDraft=String(p.firDraft||'').slice(0,8000);r.status=r.firDraft.trim()?'fir_draft':'under_review';r.updatedAt=iso();r.externalSubmission=false;
+      (r.events??=[]).push({at:iso(),text:r.firDraft?'FIR draft saved for officer review. Nothing filed externally.':'Case details updated.'});detail=r.id;break;
+    }
+    case 'police.reference': {
+      allow(role,['police']);const r=find(s.reports,p.id,'Police case');if(r.status==='closed')throw Error('Reopen the case first.');
+      if(p.attestation!==true)throw Error('Confirm this reference was already issued by police.');
+      r.officialReference=required(p.reference,'Issued reference');r.station=required(p.station,'Police station');r.officer=required(p.officer,'Recording officer');r.status='reference_recorded';r.referenceVerification='operator_reported';r.externalSubmission=false;
+      (r.events??=[]).push({at:iso(),text:'Externally issued reference entered by operator. Health SOS did not file or verify it.'});detail=r.id;break;
+    }
+    case 'police.close': {
+      allow(role,['police']);const r=find(s.reports,p.id,'Police case');if(r.status==='closed')throw Error('Case is already closed.');r.closureNote=required(p.note,'Closure note');r.status='closed';(r.events??=[]).push({at:iso(),text:'Case closed in this workspace: '+r.closureNote});detail=r.id;break;
+    }
+    case 'police.reopen': {
+      allow(role,['police']);const r=find(s.reports,p.id,'Police case');if(r.status!=='closed')throw Error('Case is already open.');r.status=r.officialReference?'reference_recorded':r.firDraft?'fir_draft':'under_review';(r.events??=[]).push({at:iso(),text:'Case reopened.'});detail=r.id;break;
     }
     case 'stock.dispense': {
       allow(role,['pharmacy']);const m=find(s.medicines,p.id,'Stock'),q=integer(p.quantity,1,10000,'Quantity');
       if(m.status!=='active'||m.expiry<iso().slice(0,10))throw Error('Expired or quarantined stock cannot be dispensed.');
-      if(q>m.quantity)throw Error('Insufficient stock.');m.quantity-=q;detail=`${m.name}: ${q} dispensed (simulation)`;break;
+      if(q>m.quantity)throw Error('Insufficient stock.');m.quantity-=q;detail=`${m.name}: ${q} dispensed`;break;
     }
     case 'stock.scan': {
       allow(role,['pharmacy']);
@@ -157,7 +194,7 @@ export function transition(current, action, p={}, role='patient') {
     }
     case 'collection.complete': {
       allow(role,['government']);const c=find(s.collections,p.id,'Collection');if(c.status==='disposed')throw Error('Collection already completed.');
-      const certificate=required(p.certificate,'Disposal certificate reference');const m=find(s.medicines,c.medicineId,'Stock');m.quantity=0;m.status='disposed';c.status='disposed';c.certificate=certificate;detail=`${c.id}; simulated disposal certificate`;break;
+      const certificate=required(p.certificate,'Disposal certificate reference');const m=find(s.medicines,c.medicineId,'Stock');m.quantity=0;m.status='disposed';c.status='disposed';c.certificate=certificate;detail=`${c.id}; disposal certificate recorded in workspace`;break;
     }
     case 'tariff.save': {
       allow(role,['government']);const amount=integer(p.amount,0,10000000,'Tariff amount');
@@ -195,10 +232,10 @@ export function sweepInventory(s) {
   return before!==JSON.stringify([s.medicines,s.orders,s.collections]);
 }
 export function guidance({safe, responsive, breathing, bleeding}) {
-  const base={title:'Contact emergency services',steps:['Call 112 or your local emergency number. Put the call on speaker and follow the dispatcher.'],level:'urgent'};
-  if(!safe||!responsive||!breathing||!bleeding)return {...base,title:'Start with scene safety',steps:[...base.steps,'Answer only what you can observe. Stay clear of immediate hazards and follow the dispatcher.']};
-  if(safe==='no')return {...base,title:'Keep yourself safe',steps:['Stay clear of traffic, fire, electricity, or other immediate hazards. Do not enter an unsafe scene.',...base.steps]};
-  if(responsive==='no'||breathing==='no'||breathing==='unsure')return {...base,title:'Tell the dispatcher immediately',steps:[...base.steps,'Say whether the person responds and whether breathing appears normal. A camera cannot confirm breathing or circulation.','Follow dispatcher-led resuscitation instructions. This prototype does not assess whether CPR is needed.']};
-  if(bleeding==='yes')return {...base,title:'Report heavy external bleeding',steps:[...base.steps,'If safe, use a clean dressing or cloth and apply firm direct pressure to external bleeding. Avoid direct contact with blood where possible.','Do not remove an embedded object. Follow the dispatcher for further instructions.']};
-  return {...base,title:'Stay with the injured person',steps:[...base.steps,'Avoid unnecessary movement after an accident unless there is immediate danger.','Keep observing and tell the dispatcher about any change. Do not give food, drink, or medication on the basis of this app.']};
+  const base={title:'Call 112',steps:['Call 112. Use speakerphone and follow the dispatcher.'],level:'urgent'};
+  if(safe==='no')return {...base,title:'Stay clear of danger',steps:['Stay away from traffic, fire and electrical hazards.',...base.steps]};
+  if(responsive==='no'||breathing==='no'||breathing==='unsure')return {...base,title:'Get emergency help now',steps:[...base.steps,'Tell the dispatcher if the person does not respond or is not breathing normally.','Follow dispatcher-led CPR instructions. A camera cannot confirm breathing or circulation.']};
+  if(bleeding==='yes')return {...base,title:'Control external bleeding',steps:[...base.steps,'Use a clean cloth or dressing. Apply firm, steady pressure to external bleeding.','Do not remove an embedded object. Follow the dispatcher.']};
+  if(!safe||!responsive||!breathing||!bleeding)return {...base,title:'First, check safety',steps:[...base.steps,'Only approach if it is safe.']};
+  return {...base,title:'Stay with the person',steps:[...base.steps,'Avoid unnecessary movement after an accident unless there is immediate danger.','Keep watching for changes. Do not give food, drink or medication based on this app.']};
 }

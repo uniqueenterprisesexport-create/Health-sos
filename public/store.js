@@ -1,4 +1,5 @@
-import {initialState,transition,roles,sweepInventory,haversine,normalizeState} from './model.js';
+import {geocodeAddress,reverseAddress,geocoderRequest} from './places.js';
+import {initialState,transition,roles,sweepInventory,haversine,normalizeState,isHospitalListing} from './model.js';
 let server=false, cache=null, session=null, db=null;
 const channel=typeof window!=='undefined'&&typeof BroadcastChannel!=='undefined'?new BroadcastChannel('health-sos'):null;
 const listeners=new Set();
@@ -31,14 +32,15 @@ export async function nearby(lat,lon,radius=8000){
     try{const r=await fetch(endpoint,{method:'POST',body:new URLSearchParams({data:query}),signal:AbortSignal.timeout(22000)});if(!r.ok)throw Error(`Directory returned ${r.status}`);const data=await r.json();return {source:'OpenStreetMap / Overpass',at:new Date().toISOString(),hospitals:mapOSM(data)};}catch(e){lastError=e;}}
   throw Error(`Live hospital directory unavailable. Check your internet connection; no fictional results substituted. ${lastError?.message||''}`);
 }
-export function mapOSM(data){return (data.elements||[]).filter(e=>e.tags?.name&&(e.lat!==undefined||e.center)).map(e=>({id:`osm-${e.type}-${e.id}`,name:e.tags.name,lat:e.lat??e.center.lat,lon:e.lon??e.center.lon,phone:e.tags['contact:phone']||e.tags.phone||'',address:[e.tags['addr:street'],e.tags['addr:city']].filter(Boolean).join(', '),website:e.tags.website||e.tags['contact:website']||'',osm:`https://www.openstreetmap.org/${e.type}/${e.id}`}));}
+export {isHospitalListing} from './model.js';
+export function mapOSM(data){return (data.elements||[]).filter(e=>e.tags?.name&&isHospitalListing(e.tags.name)&&(e.lat!==undefined||e.center)).map(e=>({id:`osm-${e.type}-${e.id}`,name:e.tags.name,lat:e.lat??e.center.lat,lon:e.lon??e.center.lon,phone:e.tags['contact:phone']||e.tags.phone||'',address:[e.tags['addr:street'],e.tags['addr:city']].filter(Boolean).join(', '),website:e.tags.website||e.tags['contact:website']||'',osm:`https://www.openstreetmap.org/${e.type}/${e.id}`}));}
 
 export async function nominatimNearby(lat,lon,radius=8000){
   const dy=radius/111320,dx=radius/(111320*Math.max(.05,Math.cos(lat*Math.PI/180)));
   const viewbox=[Math.max(-180,lon-dx),Math.min(90,lat+dy),Math.min(180,lon+dx),Math.max(-90,lat-dy)].join(',');
-  const url='https://nominatim.openstreetmap.org/search?'+new URLSearchParams({format:'jsonv2',q:'[hospital]',viewbox,bounded:'1',limit:'40',extratags:'1'});
-  const headers=typeof window==='undefined'?{'User-Agent':'HealthSOS-NEEEV-Prototype/0.1 (https://github.com/uniqueenterprisesexport-create/Health-sos)'}:{};
-  const r=await fetch(url,{headers,signal:AbortSignal.timeout(14000)});if(!r.ok)throw Error('Hospital directory returned '+r.status);
-  const rows=await r.json();const hospitals=rows.filter(e=>e.type==='hospital'||e.addresstype==='hospital').map(e=>({id:`osm-${e.osm_type}-${e.osm_id}`,name:e.name||e.display_name.split(',')[0],lat:Number(e.lat),lon:Number(e.lon),phone:e.extratags?.phone||e.extratags?.['contact:phone']||'',address:e.display_name,osm:`https://www.openstreetmap.org/${e.osm_type}/${e.osm_id}`})).filter(h=>haversine({lat,lon},h)<=radius/1000).sort((a,b)=>haversine({lat,lon},a)-haversine({lat,lon},b));
+  const rows=await geocoderRequest(new URLSearchParams({format:'jsonv2',q:'[hospital]',viewbox,bounded:'1',limit:'40',extratags:'1'}));const hospitals=rows.filter(e=>(e.type==='hospital'||e.addresstype==='hospital')&&isHospitalListing(e.name||e.display_name?.split(',')[0])).map(e=>({id:`osm-${e.osm_type}-${e.osm_id}`,name:e.name||e.display_name.split(',')[0],lat:Number(e.lat),lon:Number(e.lon),phone:e.extratags?.phone||e.extratags?.['contact:phone']||'',address:e.display_name,osm:`https://www.openstreetmap.org/${e.osm_type}/${e.osm_id}`})).filter(h=>haversine({lat,lon},h)<=radius/1000).sort((a,b)=>haversine({lat,lon},a)-haversine({lat,lon},b));
   return {source:'OpenStreetMap / Nominatim (up to 40 matching listings; not exhaustive)',at:new Date().toISOString(),hospitals};
 }
+
+export async function searchAddress(query){try{return (await request('/api/places?q='+encodeURIComponent(query))).places;}catch{return geocodeAddress(query);}}
+export async function addressAt(lat,lon){try{return (await request(`/api/places?lat=${lat}&lon=${lon}`)).place;}catch{return reverseAddress(lat,lon);}}

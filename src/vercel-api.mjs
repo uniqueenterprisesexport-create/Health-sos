@@ -1,3 +1,4 @@
+import {geocodeAddress,reverseAddress} from '../public/places.js';
 // Vercel hosts the browser sandbox plus stateless network integrations.
 // SQLite and Python subprocesses remain local-only; OpenCV.js runs on device.
 import {nominatimNearby} from '../public/store.js';
@@ -41,3 +42,5 @@ export async function scene(req,res){
     const data=await response.json();send(res,200,{description:data.choices?.[0]?.message?.content||'No description returned.',source:'AI-generated, unverified',model:process.env.OPENROUTER_MODEL});
   }catch(e){send(res,e.status||502,{error:e.message||'Scene description unavailable.'});}
 }
+
+export async function places(req,res){try{if(req.method!=='GET')return send(res,405,{error:'Method not allowed.'});const u=new URL(req.url,'https://health-sos.local');if(u.searchParams.has('q'))return send(res,200,{places:await geocodeAddress(u.searchParams.get('q')),source:'OpenStreetMap / Nominatim'});const lat=Number(u.searchParams.get('lat')),lon=Number(u.searchParams.get('lon'));if(!u.searchParams.has('lat')||!u.searchParams.has('lon')||!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)throw failure('Valid location required.');send(res,200,{place:await reverseAddress(lat,lon)});}catch(e){send(res,e.status||400,{error:e.message});}}
